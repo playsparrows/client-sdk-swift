@@ -56,7 +56,7 @@ actor QueueActor<T: Sendable>: Loggable {
         } else if elseEnqueue {
             queue.append(value)
         } else {
-            log("Dropped \(T.self) while suspended (not queueable)", .warning)
+            log("Dropped \(Self.describeForLog(value)) while suspended (not queueable)", .warning)
         }
     }
 
@@ -79,5 +79,13 @@ actor QueueActor<T: Sendable>: Loggable {
             await onProcess(element)
         }
         queue.removeAll()
+    }
+
+    /// The signal request's message case (never its payload, e.g. an SDP), else the type.
+    private static func describeForLog(_ value: T) -> String {
+        if let request = value as? Livekit_SignalRequest, let message = request.message {
+            return "SignalRequest." + (String(describing: message).components(separatedBy: "(").first ?? "?")
+        }
+        return String(describing: T.self)
     }
 }
