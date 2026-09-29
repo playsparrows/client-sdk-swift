@@ -514,8 +514,12 @@ private extension SignalClient {
 
 extension SignalClient {
     func resumeQueues() async {
-        await _responseQueue.resume()
+        // Requests first: resuming responses delivers queued offers, whose
+        // answers are sent from a detached task. `.answer` / `.trickle` can't be
+        // queued, so sending one while the request queue is still suspended
+        // would drop it silently and the subscriber transport would never connect.
         await _requestQueue.resume()
+        await _responseQueue.resume()
     }
 }
 

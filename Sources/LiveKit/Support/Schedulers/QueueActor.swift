@@ -55,6 +55,8 @@ actor QueueActor<T: Sendable>: Loggable {
             await onProcess(value)
         } else if elseEnqueue {
             queue.append(value)
+        } else {
+            log("Dropped \(T.self) while suspended (not queueable)", .warning)
         }
     }
 
