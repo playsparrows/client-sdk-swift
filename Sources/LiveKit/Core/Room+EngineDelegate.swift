@@ -204,13 +204,16 @@ extension Room {
     }
 
     func engine(_ engine: Room, didReceiveUserPacket packet: Livekit_UserPacket, encryptionType: EncryptionType) {
-        // participant could be null if data broadcasted from server
+        // participant could be null if data broadcasted from server, or if the
+        // sender is not in the roster yet (signal and data channels are unordered)
         let identity = Participant.Identity(from: packet.participantIdentity)
         let participant = _state.remoteParticipants[identity]
+        let senderIdentity = packet.participantIdentity.isEmpty ? nil : identity
 
         if case .connected = engine._state.connectionState {
             delegates.notify(label: { "room.didReceive data: \(packet.payload)" }) {
                 $0.room?(self, participant: participant, didReceiveData: packet.payload, forTopic: packet.topic, encryptionType: encryptionType)
+                $0.room?(self, senderIdentity: senderIdentity, participant: participant, didReceiveData: packet.payload, forTopic: packet.topic, encryptionType: encryptionType)
             }
 
             if let participant {

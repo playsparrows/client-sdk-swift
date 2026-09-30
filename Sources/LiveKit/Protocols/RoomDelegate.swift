@@ -184,6 +184,19 @@ public protocol RoomDelegate: AnyObject, Sendable {
     @objc optional
     func room(_ room: Room, participant: RemoteParticipant?, didReceiveData data: Data, forTopic topic: String, encryptionType: EncryptionType)
 
+    /// Received data from a user or server, with the sender identity the SFU stamped on the packet.
+    ///
+    /// `participant` is looked up by that identity in ``Room/remoteParticipants``, which is filled from
+    /// signal-channel participant updates while data arrives on the data channel, with no ordering between
+    /// the two. A sender that has just (re)joined can therefore deliver data before it is in the roster:
+    /// `participant` is nil but `senderIdentity` is set. `senderIdentity` is nil only when the packet
+    /// carries no identity (e.g. data sent through the server API).
+    ///
+    /// Called alongside ``RoomDelegate/room(_:participant:didReceiveData:forTopic:encryptionType:)``;
+    /// implement one of the two.
+    @objc(room:senderIdentity:participant:didReceiveData:forTopic:encryptionType:) optional
+    func room(_ room: Room, senderIdentity: Participant.Identity?, participant: RemoteParticipant?, didReceiveData data: Data, forTopic topic: String, encryptionType: EncryptionType)
+
     /// Failed to decrypt a data packet when encryption is enabled.
     @objc optional
     func room(_ room: Room, didFailToDecryptDataWithEror error: LiveKitError)
