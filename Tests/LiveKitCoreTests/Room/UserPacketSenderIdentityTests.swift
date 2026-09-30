@@ -59,6 +59,16 @@ struct UserPacketSenderIdentityTests {
         }
     }
 
+    /// Delivers a user packet the way `Room.dataChannel(_:didReceiveDataPacket:)` does: the outer
+    /// `DataPacket.participant_identity` is the SFU-stamped one.
+    private func deliver(_ userPacket: Livekit_UserPacket, stamped: String, encryptionType: EncryptionType = .none, to room: Room) {
+        let dataPacket = Livekit_DataPacket.with {
+            $0.participantIdentity = stamped
+            $0.user = userPacket
+        }
+        room.dataChannel(room.publisherDataChannel, didReceiveDataPacket: dataPacket, encryptionType: encryptionType)
+    }
+
     private func waitForDeliveries(_ recorder: Recorder, count: Int) async throws -> (stamped: [Delivery], legacyCount: Int) {
         for _ in 0 ..< 200 {
             let snapshot = recorder.snapshot
@@ -73,7 +83,7 @@ struct UserPacketSenderIdentityTests {
         let room = connectedRoom(with: recorder)
         let payload = Data([1, 2, 3])
 
-        room.engine(room, didReceiveUserPacket: packet(from: "game-server", topic: "conductor", payload: payload), encryptionType: .none)
+        deliver(packet(from: "game-server", topic: "conductor", payload: payload), stamped: "game-server", to: room)
 
         let snapshot = try await waitForDeliveries(recorder, count: 1)
         #expect(snapshot.stamped == [Delivery(senderIdentity: "game-server", hasParticipant: false, topic: "conductor", data: payload)])
@@ -91,7 +101,7 @@ struct UserPacketSenderIdentityTests {
         let remote = RemoteParticipant(info: info, room: room, connectionState: .connected)
         room._state.mutate { $0.remoteParticipants[Participant.Identity(from: "game-server")] = remote }
 
-        room.engine(room, didReceiveUserPacket: packet(from: "game-server", topic: "conductor", payload: Data([9])), encryptionType: .none)
+        deliver(packet(from: "game-server", topic: "conductor", payload: Data([9])), stamped: "game-server", to: room)
 
         let snapshot = try await waitForDeliveries(recorder, count: 1)
         #expect(snapshot.stamped.first?.senderIdentity == "game-server")
@@ -102,10 +112,44 @@ struct UserPacketSenderIdentityTests {
         let recorder = Recorder()
         let room = connectedRoom(with: recorder)
 
-        room.engine(room, didReceiveUserPacket: packet(from: "", topic: "conductor", payload: Data([7])), encryptionType: .none)
+        deliver(packet(from: "", topic: "conductor", payload: Data([7])), stamped: "", to: room)
 
         let snapshot = try await waitForDeliveries(recorder, count: 1)
         #expect(snapshot.stamped.first?.senderIdentity == nil)
         #expect(snapshot.stamped.first?.hasParticipant == false)
+    }
+
+    /// The outer, SFU-stamped identity wins over the sender-controlled inner one.
+    @Test func stampedOuterIdentityWinsOverTheInnerOne() async throws {
+        let recorder = Recorder()
+        let room = connectedRoom(with: recorder)
+
+        deliver(packet(from: "game-server", topic: "conductor", payload: Data([5])), stamped: "player-2", to: room)
+
+        let snapshot = try await waitForDeliveries(recorder, count: 1)
+        #expect(snapshot.stamped.first?.senderIdentity == "player-2")
+    }
+
+    /// With E2EE the inner identity is inside the ciphertext, written by the sender: never trusted.
+    @Test func encryptedPacketNeverFallsBackToTheInnerIdentity() async throws {
+        let recorder = Recorder()
+        let room = connectedRoom(with: recorder)
+
+        deliver(packet(from: "game-server", topic: "conductor", payload: Data([6])), stamped: "", encryptionType: .gcm, to: room)
+
+        let snapshot = try await waitForDeliveries(recorder, count: 1)
+        #expect(snapshot.stamped.first?.senderIdentity == nil)
+    }
+
+    /// An unencrypted packet from an older server that leaves the outer field empty falls back to the
+    /// inner identity, which the SFU also overwrites in plaintext.
+    @Test func unencryptedPacketWithoutOuterIdentityUsesTheInnerOne() async throws {
+        let recorder = Recorder()
+        let room = connectedRoom(with: recorder)
+
+        deliver(packet(from: "game-server", topic: "conductor", payload: Data([8])), stamped: "", to: room)
+
+        let snapshot = try await waitForDeliveries(recorder, count: 1)
+        #expect(snapshot.stamped.first?.senderIdentity == "game-server")
     }
 }

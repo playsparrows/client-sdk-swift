@@ -203,12 +203,17 @@ extension Room {
         await publication.set(track: nil)
     }
 
-    func engine(_ engine: Room, didReceiveUserPacket packet: Livekit_UserPacket, encryptionType: EncryptionType) {
+    /// `stampedIdentity` is the outer `DataPacket.participant_identity`, which the SFU sets from the
+    /// sender's token on every forwarded packet. The inner `UserPacket.participant_identity` is
+    /// deprecated and, for an encrypted packet, travels inside the ciphertext where the SFU cannot
+    /// overwrite it, so it is only a fallback for servers that leave the outer field empty.
+    func engine(_ engine: Room, didReceiveUserPacket packet: Livekit_UserPacket, from stampedIdentity: String, encryptionType: EncryptionType) {
+        let senderString = stampedIdentity.isEmpty && encryptionType == .none ? packet.participantIdentity : stampedIdentity
         // participant could be null if data broadcasted from server, or if the
         // sender is not in the roster yet (signal and data channels are unordered)
-        let identity = Participant.Identity(from: packet.participantIdentity)
+        let identity = Participant.Identity(from: senderString)
         let participant = _state.remoteParticipants[identity]
-        let senderIdentity = packet.participantIdentity.isEmpty ? nil : identity
+        let senderIdentity = senderString.isEmpty ? nil : identity
 
         if case .connected = engine._state.connectionState {
             delegates.notify(label: { "room.didReceive data: \(packet.payload)" }) {

@@ -189,8 +189,12 @@ public protocol RoomDelegate: AnyObject, Sendable {
     /// `participant` is looked up by that identity in ``Room/remoteParticipants``, which is filled from
     /// signal-channel participant updates while data arrives on the data channel, with no ordering between
     /// the two. A sender that has just (re)joined can therefore deliver data before it is in the roster:
-    /// `participant` is nil but `senderIdentity` is set. `senderIdentity` is nil only when the packet
-    /// carries no identity (e.g. data sent through the server API).
+    /// `participant` is nil but `senderIdentity` is set. `senderIdentity` is nil only when
+    /// the packet carries no identity: data sent through the server API, or a sender the SFU hides.
+    /// It is the SFU-stamped outer `DataPacket` identity. Only for an unencrypted packet whose outer field
+    /// is empty (older servers) is the deprecated inner `UserPacket` identity used; the SFU overwrites that
+    /// too in plaintext, but with E2EE it is inside the ciphertext and sender-controlled, so it is never
+    /// used for an encrypted packet. ``ParticipantDelegate`` data callbacks still require a roster participant.
     ///
     /// Called alongside ``RoomDelegate/room(_:participant:didReceiveData:forTopic:encryptionType:)``;
     /// implement one of the two.
